@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Histori Cuci Mobil</title>
+<style>
+body{font-family:Arial;background:#f1f4f8;margin:0;padding:16px;color:#222}
+h2{color:#173b65}
+.card{background:white;padding:16px;border-radius:12px;margin-bottom:14px}
+input,select,button{width:100%;box-sizing:border-box;padding:12px;margin:6px 0;border:1px solid #ccc;border-radius:7px;font-size:15px}
+button{background:#1769aa;color:white;border:0;font-weight:bold}
+.green{background:#18834a}
+.red{background:#b83232}
+.item{padding:12px 0;border-bottom:1px solid #ddd}
+.small{font-size:13px;color:#666}
+</style>
+</head>
+<body>
+<h2>🚘 HISTORI CUCI MOBIL</h2>
+
+<div class="card">
+<h3>Pengaturan Bonus</h3>
+<label>Jumlah cuci untuk mendapatkan gratis</label>
+<input id="target" type="number" min="1" value="10">
+<label>Masa berlaku transaksi (hari)</label>
+<input id="days" type="number" min="1" value="365">
+<button onclick="saveSettings()">Simpan Pengaturan</button>
+</div>
+
+<div class="card">
+<h3>Tambah Pelanggan</h3>
+<input id="nama" placeholder="Nama pelanggan">
+<input id="plat" placeholder="Nomor polisi kendaraan">
+<input id="telp" placeholder="Nomor HP">
+<button onclick="addCustomer()">Simpan Pelanggan</button>
+</div>
+
+<div class="card">
+<h3>Transaksi Cuci</h3>
+<select id="customer"></select>
+<button onclick="addWash()">+ Catat Cuci Berbayar</button>
+<button class="green" onclick="redeem()">🎁 Gunakan Bonus Cuci Gratis</button>
+</div>
+
+<div class="card">
+<h3>Daftar Pelanggan</h3>
+<input id="search" placeholder="Cari nama atau nomor polisi" oninput="showCustomers()">
+<div id="customers"></div>
+</div>
+
+<div class="card">
+<h3>Histori Transaksi</h3>
+<div id="history">Pilih pelanggan untuk melihat histori.</div>
+</div>
+
+<script>
+let data=JSON.parse(localStorage.getItem("carwash_data")||"[]");
+let target=Number(localStorage.getItem("target")||10);
+let days=Number(localStorage.getItem("days")||365);
+document.getElementById("target").value=target;
+document.getElementById("days").value=days;
+
+function save(){
+ localStorage.setItem("carwash_data",JSON.stringify(data));
+}
+function saveSettings(){
+ target=Math.max(1,Number(document.getElementById("target").value)||10);
+ days=Math.max(1,Number(document.getElementById("days").value)||365);
+ localStorage.setItem("target",target);
+ localStorage.setItem("days",days);
+ alert("Pengaturan berhasil disimpan");
+ showHistory();
+}
+function addCustomer(){
+ let nama=document.getElementById("nama").value.trim();
+ let plat=document.getElementById("plat").value.trim();
+ let telp=document.getElementById("telp").value.trim();
+ if(!nama||!plat){alert("Isi nama dan nomor polisi");return}
+ data.push({id:Date.now(),nama,plat,telp,records:[]});
+ save();
+ document.getElementById("nama").value="";
+ document.getElementById("plat").value="";
+ document.getElementById("telp").value="";
+ refresh();
+ alert("Pelanggan berhasil ditambahkan");
+}
+function selected(){
+ return data.find(x=>x.id==document.getElementById("customer").value);
+}
+function expired(r){
+ return (Date.now()-new Date(r.date).getTime())>days*86400000;
+}
+function validRecords(c){
+ return c.records.filter(r=>r.type==="paid"&&!r.used&&!expired(r));
+}
+function addWash(){
+ let c=selected();
+ if(!c){alert("Pilih pelanggan dahulu");return}
+ c.records.push({type:"paid",date:new Date().toISOString()});
+ save();refresh();
+ alert("Transaksi cuci berhasil dicatat");
+}
+function redeem(){
+ let c=selected();
+ if(!c){alert("Pilih pelanggan dahulu");return}
+ let valid=validRecords(c);
+ if(valid.length<target){
+ alert("Bonus belum tersedia. Cuci valid: "+valid.length+"/"+target);
+ return;
+ }
+ valid.sort((a,b)=>new Date(a.date)-new Date(b.date));
+ valid.slice(0,target).forEach(r=>r.used=true);
+ c.records.push({type:"free",date:new Date().toISOString()});
+ save();refresh();
+ alert("Bonus cuci gratis berhasil digunakan!");
+}
+function refresh(){
+ let s=document.getElementById("customer");
+ let old=s.value;
+ s.innerHTML='<option value="">-- Pilih Pelanggan --</option>';
+ data.forEach(c=>{
+ let o=document.createElement("option");
+ o.value=c.id;o.textContent=c.nama+" - "+c.plat;
+ s.appendChild(o);
+ });
+ if(data.some(c=>c.id==old))s.value=old;
+ showCustomers();showHistory();
+}
+function showCustomers(){
+ let q=document.getElementById("search").value.toLowerCase();
+ document.getElementById("customers").innerHTML=data
+ .filter(c=>(c.nama+" "+c.plat).toLowerCase().includes(q))
+ .map(c=>`<div class="item"><b>${esc(c.nama)}</b><br>
+ ${esc(c.plat)}<br><span class="small">${esc(c.telp)}</span></div>`).join("")||"Belum ada pelanggan";
+}
+function showHistory(){
+ let c=selected();
+ let h=document.getElementById("history");
+ if(!c){h.innerHTML="Pilih pelanggan untuk melihat histori.";return}
+ let valid=validRecords(c);
+ let all=c.records;
+ h.innerHTML=`<b>${esc(c.nama)}</b><p>Cuci valid untuk bonus: ${valid.length}/${target}</p>
+ <p>Bonus tersedia: ${Math.floor(valid.length/target)}</p>
+ <hr>`+
+ all.slice().reverse().map(r=>{
+ let status=r.type==="free"?"CUCI GRATIS":r.used?"Sudah dipakai untuk bonus":expired(r)?"KEDALUWARSA":"Masih berlaku";
+ return `<div class="item">${r.type==="free"?"🎁":"🚘"} 
+ ${new Date(r.date).toLocaleString("id-ID")}<br>
+ <span class="small">${status}</span></div>`;
+ }).join("");
+}
+function esc(s){
+ return String(s).replace(/[&<>"']/g,x=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]));
+}
+document.getElementById("customer").addEventListener("change",showHistory);
+refresh();
+</script>
+</body>
+</html>
